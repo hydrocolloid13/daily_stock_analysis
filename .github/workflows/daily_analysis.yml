@@ -175,24 +175,25 @@ jobs:
           echo ""
 
           # ==========================================
-          # DEBUG: verify config object reads 'en' at runtime
+          # DEBUG: write to temp file to avoid YAML quote issues
           # ==========================================
-          python -c "
+          cat > /tmp/debug_config.py << 'PYEOF'
 import os
-print('=== OS ENV CHECK ===')
-print('REPORT_LANGUAGE from os.environ:', os.environ.get('REPORT_LANGUAGE', 'NOT SET'))
-print('REPORT_TYPE from os.environ:', os.environ.get('REPORT_TYPE', 'NOT SET'))
+print("=== OS ENV CHECK ===")
+print("REPORT_LANGUAGE:", os.environ.get("REPORT_LANGUAGE", "NOT SET"))
+print("REPORT_TYPE:", os.environ.get("REPORT_TYPE", "NOT SET"))
 from src.config import setup_env, get_config
 setup_env()
 c = get_config()
-print('=== CONFIG OBJECT CHECK ===')
-print('config.report_language:', c.report_language)
-print('config.report_type:', c.report_type)
-print('config.market_review_enabled:', c.market_review_enabled)
-print('==========================================')
-"
+print("=== CONFIG OBJECT CHECK ===")
+print("config.report_language:", c.report_language)
+print("config.report_type:", c.report_type)
+print("config.market_review_enabled:", c.market_review_enabled)
+print("==========================================")
+PYEOF
+          python /tmp/debug_config.py
           # ==========================================
-         
+
           FORCE_RUN_ARG=""
           if [ "${{ github.event.inputs.force_run }}" = "true" ]; then
             FORCE_RUN_ARG="--force-run"
@@ -216,7 +217,7 @@ print('==========================================')
             logs/
           retention-days: 30
      
-      - name: 显示运行结果
+      - name: 显示运行결과
         if: always()
         run: |
           echo ""
