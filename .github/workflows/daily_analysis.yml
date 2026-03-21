@@ -54,16 +54,6 @@ jobs:
         run: |
           mkdir -p data logs reports
 
-      - name: Force English configuration (eliminates Chinese fallback)
-        run: |
-          cat > .env << 'EOF'
-          REPORT_LANGUAGE=en
-          REPORT_RENDERER_ENABLED=true
-          REPORT_TYPE=full
-          EOF
-          echo "✅ .env created with forced English settings:"
-          cat .env
-
       - name: 执行股票分析
         env:
           # ==========================================
@@ -120,9 +110,13 @@ jobs:
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
-          REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
-          REPORT_LANGUAGE: ${{ vars.REPORT_LANGUAGE || secrets.REPORT_LANGUAGE || 'en' }}
+          # ==========================================
+          # HARDCODED: these must NOT come from vars/secrets to prevent Chinese fallback
+          # ==========================================
+          REPORT_TYPE: 'full'
+          REPORT_LANGUAGE: 'en'
           REPORT_RENDERER_ENABLED: 'true'
+          # ==========================================
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
           MARKET_REVIEW_ENABLED: ${{ vars.MARKET_REVIEW_ENABLED || secrets.MARKET_REVIEW_ENABLED || 'true' }}
           ANALYSIS_DELAY: ${{ vars.ANALYSIS_DELAY || secrets.ANALYSIS_DELAY || '0' }}
@@ -150,6 +144,7 @@ jobs:
           echo "🎯 运行模式: $MODE"
           echo "📊 自选股: $STOCK_LIST"
           echo "📝 报告类型: $REPORT_TYPE"
+          echo "🌐 报告语言: $REPORT_LANGUAGE"
           echo ""
           echo "=========================================="
           echo "📋 配置检查"
