@@ -52,10 +52,20 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: 创建必要目录
+            - name: 创建必要目录
         run: |
           mkdir -p data logs reports
-      
+
+      - name: Force English configuration (eliminates Chinese fallback)
+        run: |
+          cat > .env << 'EOF'
+          REPORT_LANGUAGE=en
+          REPORT_RENDERER_ENABLED=true
+          REPORT_TYPE=full
+          EOF
+          echo "✅ .env created with forced English settings:"
+          cat .env
+
       - name: 执行股票分析
         env:
           # ==========================================
