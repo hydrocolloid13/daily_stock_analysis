@@ -54,6 +54,28 @@ jobs:
         run: |
           mkdir -p data logs reports
 
+      - name: Force English - override .env and GitHub env layer
+        run: |
+          # 1. Patch the .env file so load_dotenv(override=True) picks up English
+          #    (covers the case where setup_env overwrites OS env vars from .env)
+          if [ -f ".env" ]; then
+            sed -i 's/^REPORT_LANGUAGE=.*/REPORT_LANGUAGE=en/' .env
+            sed -i 's/^REPORT_TYPE=.*/REPORT_TYPE=full/' .env
+            grep -q "^REPORT_LANGUAGE=" .env || echo "REPORT_LANGUAGE=en" >> .env
+            grep -q "^REPORT_TYPE=" .env    || echo "REPORT_TYPE=full"    >> .env
+            grep -q "^REPORT_RENDERER_ENABLED=" .env || echo "REPORT_RENDERER_ENABLED=true" >> .env
+          else
+            printf "REPORT_LANGUAGE=en\nREPORT_TYPE=full\nREPORT_RENDERER_ENABLED=true\n" > .env
+          fi
+          echo "✅ .env language settings:"
+          grep -E "REPORT_LANGUAGE|REPORT_TYPE|REPORT_RENDERER" .env
+
+          # 2. Write into $GITHUB_ENV so values are OS-level env vars for ALL
+          #    subsequent steps - this wins even over load_dotenv(override=True)
+          echo "REPORT_LANGUAGE=en"          >> $GITHUB_ENV
+          echo "REPORT_TYPE=full"            >> $GITHUB_ENV
+          echo "REPORT_RENDERER_ENABLED=true" >> $GITHUB_ENV
+
       - name: 执行股票分析
         env:
           # ==========================================
@@ -111,7 +133,7 @@ jobs:
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           # ==========================================
-          # HARDCODED: these must NOT come from vars/secrets to prevent Chinese fallback
+          # HARDCODED - do not change these to vars/secrets
           # ==========================================
           REPORT_TYPE: 'full'
           REPORT_LANGUAGE: 'en'
