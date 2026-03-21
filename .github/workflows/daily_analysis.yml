@@ -56,8 +56,6 @@ jobs:
 
       - name: Force English - override .env and GitHub env layer
         run: |
-          # 1. Patch the .env file so load_dotenv(override=True) picks up English
-          #    (covers the case where setup_env overwrites OS env vars from .env)
           if [ -f ".env" ]; then
             sed -i 's/^REPORT_LANGUAGE=.*/REPORT_LANGUAGE=en/' .env
             sed -i 's/^REPORT_TYPE=.*/REPORT_TYPE=full/' .env
@@ -69,11 +67,8 @@ jobs:
           fi
           echo "✅ .env language settings:"
           grep -E "REPORT_LANGUAGE|REPORT_TYPE|REPORT_RENDERER" .env
-
-          # 2. Write into $GITHUB_ENV so values are OS-level env vars for ALL
-          #    subsequent steps - this wins even over load_dotenv(override=True)
-          echo "REPORT_LANGUAGE=en"          >> $GITHUB_ENV
-          echo "REPORT_TYPE=full"            >> $GITHUB_ENV
+          echo "REPORT_LANGUAGE=en"           >> $GITHUB_ENV
+          echo "REPORT_TYPE=full"             >> $GITHUB_ENV
           echo "REPORT_RENDERER_ENABLED=true" >> $GITHUB_ENV
 
       - name: 执行股票分析
@@ -178,6 +173,25 @@ jobs:
           echo " Telegram: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "=========================================="
           echo ""
+
+          # ==========================================
+          # DEBUG: verify config object reads 'en' at runtime
+          # ==========================================
+          python -c "
+import os
+print('=== OS ENV CHECK ===')
+print('REPORT_LANGUAGE from os.environ:', os.environ.get('REPORT_LANGUAGE', 'NOT SET'))
+print('REPORT_TYPE from os.environ:', os.environ.get('REPORT_TYPE', 'NOT SET'))
+from src.config import setup_env, get_config
+setup_env()
+c = get_config()
+print('=== CONFIG OBJECT CHECK ===')
+print('config.report_language:', c.report_language)
+print('config.report_type:', c.report_type)
+print('config.market_review_enabled:', c.market_review_enabled)
+print('==========================================')
+"
+          # ==========================================
          
           FORCE_RUN_ARG=""
           if [ "${{ github.event.inputs.force_run }}" = "true" ]; then
