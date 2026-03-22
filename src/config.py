@@ -583,7 +583,7 @@ class Config:
 
     # 报告类型：simple(精简) 或 full(完整)
     report_type: str = "simple"
-    report_language: str = "zh"
+    report_language: str = "en"
 
     # 仅分析结果摘要：true 时只推送汇总，不含个股详情（Issue #262）
     report_summary_only: bool = False
@@ -1659,12 +1659,12 @@ class Config:
         if file_value is not None:
             return file_value
 
-        return env_value or "zh"
+        return env_value or "en"
 
     @classmethod
     def _parse_report_language(cls, value: Optional[str]) -> str:
-        """Parse REPORT_LANGUAGE, fallback to zh for invalid values."""
-        normalized = normalize_report_language(value, default="zh")
+        """Parse REPORT_LANGUAGE, fallback to en for invalid values."""
+        normalized = normalize_report_language(value, default="en")
         raw = (value or "").strip()
         if raw and not is_supported_report_language_value(raw):
             logging.getLogger(__name__).warning(
