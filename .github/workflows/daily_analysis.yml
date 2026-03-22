@@ -1,11 +1,11 @@
-name: daily_stock_analysis
+name: 每日股票分析
 on:
   schedule:
     - cron: '0 10 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Run mode'
+        description: '运行模式'
         required: true
         default: 'full'
         type: choice
@@ -14,7 +14,7 @@ on:
           - market-only
           - stocks-only
       force_run:
-        description: 'Force run (skip trading day check)'
+        description: '强制运行（跳过交易日检查）'
         required: false
         default: false
         type: boolean
@@ -55,14 +55,13 @@ jobs:
             sed -i 's/^REPORT_LANGUAGE=.*/REPORT_LANGUAGE=en/' .env
             sed -i 's/^REPORT_TYPE=.*/REPORT_TYPE=full/' .env
             grep -q "^REPORT_LANGUAGE=" .env || echo "REPORT_LANGUAGE=en" >> .env
-            grep -q "^REPORT_TYPE=" .env || echo "REPORT_TYPE=full" >> .env
+            grep -q "^REPORT_TYPE=" .env    || echo "REPORT_TYPE=full"    >> .env
             grep -q "^REPORT_RENDERER_ENABLED=" .env || echo "REPORT_RENDERER_ENABLED=true" >> .env
           else
             printf "REPORT_LANGUAGE=en\nREPORT_TYPE=full\nREPORT_RENDERER_ENABLED=true\n" > .env
           fi
-          grep -E "REPORT_LANGUAGE|REPORT_TYPE|REPORT_RENDERER" .env
-          echo "REPORT_LANGUAGE=en" >> $GITHUB_ENV
-          echo "REPORT_TYPE=full" >> $GITHUB_ENV
+          echo "REPORT_LANGUAGE=en"           >> $GITHUB_ENV
+          echo "REPORT_TYPE=full"             >> $GITHUB_ENV
           echo "REPORT_RENDERER_ENABLED=true" >> $GITHUB_ENV
 
       - name: Run analysis
@@ -72,8 +71,8 @@ jobs:
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
           LITELLM_MODEL: ${{ vars.LITELLM_MODEL || secrets.LITELLM_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-3-flash-preview' }}
-          GEMINI_MODEL_FALLBACK: ${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MODEL_FALLBACK: ${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK || 'gemini-2.0-flash' }}
           GEMINI_REQUEST_DELAY: '3.0'
           AIHUBMIX_KEY: ${{ secrets.AIHUBMIX_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -118,9 +117,11 @@ jobs:
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
+          # ── HARDCODED – do not move to vars/secrets ──
           REPORT_TYPE: 'full'
           REPORT_LANGUAGE: 'en'
           REPORT_RENDERER_ENABLED: 'true'
+          # ─────────────────────────────────────────────
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
           MARKET_REVIEW_ENABLED: ${{ vars.MARKET_REVIEW_ENABLED || secrets.MARKET_REVIEW_ENABLED || 'true' }}
           ANALYSIS_DELAY: ${{ vars.ANALYSIS_DELAY || secrets.ANALYSIS_DELAY || '0' }}
@@ -138,21 +139,17 @@ jobs:
 
           MODE="${{ github.event.inputs.mode || 'full' }}"
 
-          echo "=== SHELL ENV CHECK ==="
-          echo "REPORT_LANGUAGE=$REPORT_LANGUAGE"
-          echo "REPORT_TYPE=$REPORT_TYPE"
-          echo "======================"
-
-          printf 'import os\n' > /tmp/dbg.py
-          printf 'print("=== OS ENV CHECK ===")\n' >> /tmp/dbg.py
-          printf 'print("REPORT_LANGUAGE:", os.environ.get("REPORT_LANGUAGE", "NOT SET"))\n' >> /tmp/dbg.py
-          printf 'from src.config import setup_env, get_config\n' >> /tmp/dbg.py
-          printf 'setup_env()\n' >> /tmp/dbg.py
-          printf 'c = get_config()\n' >> /tmp/dbg.py
-          printf 'print("=== CONFIG OBJECT CHECK ===")\n' >> /tmp/dbg.py
-          printf 'print("config.report_language:", c.report_language)\n' >> /tmp/dbg.py
-          printf 'print("config.report_type:", c.report_type)\n' >> /tmp/dbg.py
-          python /tmp/dbg.py
+          echo "=========================================="
+          echo "🚀 Daily Stock Analysis"
+          echo "=========================================="
+          echo "Time:     $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+          echo "Mode:     $MODE"
+          echo "Stocks:   $STOCK_LIST"
+          echo "Language: $REPORT_LANGUAGE"
+          echo "Type:     $REPORT_TYPE"
+          echo "Gemini:   $([ -n "$GEMINI_API_KEY" ] && echo 'configured' || echo 'NOT SET')"
+          echo "Telegram: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo 'configured' || echo 'NOT SET')"
+          echo "=========================================="
 
           FORCE_RUN_ARG=""
           if [ "${{ github.event.inputs.force_run }}" = "true" ]; then
@@ -180,9 +177,12 @@ jobs:
       - name: Show results
         if: always()
         run: |
+          echo "=========================================="
+          echo "Results"
+          echo "=========================================="
           if [ -d "reports" ] && [ "$(ls -A reports 2>/dev/null)" ]; then
             ls -la reports/
           else
-            echo "No reports generated"
+            echo "No report files generated"
           fi
           tail -30 logs/stock_analysis_*.log 2>/dev/null || echo "No logs"
