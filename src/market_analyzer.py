@@ -78,6 +78,17 @@ class MarketOverview:
 class MarketAnalyzer:
     """大盘复盘分析器"""
 
+    # English system prompt used when report_language=en
+    ENGLISH_SYSTEM_PROMPT = """You are a professional stock market analyst. Your job is to write daily market recap reports.
+
+ABSOLUTE RULE: You MUST write your ENTIRE response in English only.
+- Do NOT use any Chinese characters anywhere in your response.
+- Do NOT switch to Chinese even if the data contains Chinese text.
+- All headings, analysis, commentary, and conclusions must be in English.
+- This rule overrides everything else.
+
+Output pure Markdown only. No JSON. No code blocks."""
+
     def __init__(
         self,
         search_service: Optional[SearchService] = None,
@@ -185,13 +196,58 @@ class MarketAnalyzer:
             logger.error(f"[大盘] 搜索市场新闻失败: {e}")
         return all_news
 
+    def _get_report_language(self) -> str:
+        """
+        Resolve report language.
+        Reads directly from OS env first (guaranteed set by GitHub Actions),
+        then falls back to config. Defaults to 'zh'.
+        """
+        _lang = os.environ.get("REPORT_LANGUAGE", "").strip().lower()
+        if _lang in ("en", "english", "en-us", "en_us"):
+            logger.info("[大盘] report_language=en (from OS env)")
+            return "en"
+        config_lang = (getattr(self.config, 'report_language', 'zh') or 'zh').strip().lower()
+        if config_lang in ("en", "english", "en-us", "en_us"):
+            logger.info("[大盘] report_language=en (from config)")
+            return "en"
+        logger.info("[大盘] report_language=zh (default)")
+        return "zh"
+
     def generate_market_review(self, overview: MarketOverview, news: List) -> str:
+        """使用大模型生成大盘复盘报告"""
         if not self.analyzer or not self.analyzer.is_available():
             logger.warning("[大盘] AI分析器未配置或不可用，使用模板生成报告")
             return self._generate_template_review(overview, news)
-        prompt = self._build_review_prompt(overview, news)
-        logger.info("[大盘] 调用大模型生成复盘报告...")
-        review = self.analyzer.generate_text(prompt, max_tokens=2048, temperature=0.7)
+
+        report_language = self._get_report_language()
+        prompt = self._build_review_prompt(overview, news, report_language)
+
+        logger.info(f"[大盘] 调用大模型生成复盘报告 (language={report_language})...")
+
+        # Pass English system prompt directly so it overrides the Chinese
+        # stock-analyst system prompt that generate_text() would otherwise use.
+        if report_language == "en":
+            try:
+                # Try calling with system_prompt kwarg (patched analyzer)
+                result = self.analyzer.generate_text(
+                    prompt,
+                    max_tokens=2048,
+                    temperature=0.7,
+                    system_prompt=self.ENGLISH_SYSTEM_PROMPT,
+                )
+            except TypeError:
+                # Fallback: analyzer doesn't accept system_prompt yet,
+                # prepend it to the user prompt instead
+                combined = self.ENGLISH_SYSTEM_PROMPT + "\n\n---\n\n" + prompt
+                result = self.analyzer.generate_text(
+                    combined,
+                    max_tokens=2048,
+                    temperature=0.7,
+                )
+            review = result
+        else:
+            review = self.analyzer.generate_text(prompt, max_tokens=2048, temperature=0.7)
+
         if review:
             logger.info("[大盘] 复盘报告生成成功，长度: %d 字符", len(review))
             return self._inject_data_into_review(review, overview)
@@ -230,20 +286,18 @@ class MarketAnalyzer:
         has_stats = overview.up_count or overview.down_count or overview.total_amount
         if not has_stats:
             return ""
-        lines = [
+        return (
             f"> 📈 上涨 **{overview.up_count}** 家 / 下跌 **{overview.down_count}** 家 / "
             f"平盘 **{overview.flat_count}** 家 | "
             f"涨停 **{overview.limit_up_count}** / 跌停 **{overview.limit_down_count}** | "
             f"成交额 **{overview.total_amount:.0f}** 亿"
-        ]
-        return "\n".join(lines)
+        )
 
     def _build_indices_block(self, overview: MarketOverview) -> str:
         if not overview.indices:
             return ""
-        lines = [
-            "| 指数 | 最新 | 涨跌幅 | 成交额(亿) |",
-            "|------|------|--------|-----------|"]
+        lines = ["| Index | Latest | Change | Turnover(bn) |",
+                 "|-------|--------|--------|-------------|"]
         for idx in overview.indices:
             arrow = "🔴" if idx.change_pct < 0 else "🟢" if idx.change_pct > 0 else "⚪"
             amount_raw = idx.amount or 0.0
@@ -264,32 +318,15 @@ class MarketAnalyzer:
             top = " | ".join(
                 [f"**{s['name']}**({s['change_pct']:+.2f}%)" for s in overview.top_sectors[:5]]
             )
-            lines.append(f"> 🔥 领涨: {top}")
+            lines.append(f"> 🔥 Top: {top}")
         if overview.bottom_sectors:
             bot = " | ".join(
                 [f"**{s['name']}**({s['change_pct']:+.2f}%)" for s in overview.bottom_sectors[:5]]
             )
-            lines.append(f"> 💧 领跌: {bot}")
+            lines.append(f"> 💧 Bottom: {bot}")
         return "\n".join(lines)
 
-    def _get_report_language(self) -> str:
-        """
-        Resolve report language.
-        Reads directly from OS env first (set by GitHub Actions workflow),
-        then falls back to config. Defaults to 'zh'.
-        """
-        _lang = os.environ.get("REPORT_LANGUAGE", "").strip().lower()
-        if _lang in ("en", "english", "en-us", "en_us"):
-            logger.info("[大盘] report_language=en (from OS env)")
-            return "en"
-        config_lang = (getattr(self.config, 'report_language', 'zh') or 'zh').strip().lower()
-        if config_lang in ("en", "english", "en-us", "en_us"):
-            logger.info("[大盘] report_language=en (from config)")
-            return "en"
-        logger.info("[大盘] report_language=zh (default)")
-        return "zh"
-
-    def _build_review_prompt(self, overview: MarketOverview, news: List) -> str:
+    def _build_review_prompt(self, overview: MarketOverview, news: List, report_language: str = "zh") -> str:
         """构建复盘报告 Prompt"""
         indices_text = ""
         for idx in overview.indices:
@@ -309,67 +346,44 @@ class MarketAnalyzer:
                 snippet = n.get('snippet', '')[:100]
             news_text += f"{i}. {title}\n   {snippet}\n"
 
-        stats_block = ""
-        sector_block = ""
-        if self.region == "us":
-            if self.profile.has_market_stats:
-                stats_block = f"""## Market Overview
-- Up: {overview.up_count} | Down: {overview.down_count} | Flat: {overview.flat_count}
-- Limit up: {overview.limit_up_count} | Limit down: {overview.limit_down_count}
-- Total volume (CNY bn): {overview.total_amount:.0f}"""
-            else:
-                stats_block = "## Market Overview\n(US market has no equivalent advance/decline stats.)"
-            if self.profile.has_sector_rankings:
-                sector_block = f"""## Sector Performance
-Leading: {top_sectors_text if top_sectors_text else "N/A"}
-Lagging: {bottom_sectors_text if bottom_sectors_text else "N/A"}"""
-            else:
-                sector_block = "## Sector Performance\n(US sector data not available.)"
-        else:
-            if self.profile.has_market_stats:
-                stats_block = f"""## 市场概况
-- 上涨: {overview.up_count} 家 | 下跌: {overview.down_count} 家 | 平盘: {overview.flat_count} 家
-- 涨停: {overview.limit_up_count} 家 | 跌停: {overview.limit_down_count} 家
-- 两市成交额: {overview.total_amount:.0f} 亿元"""
-            else:
-                stats_block = "## 市场概况\n（美股暂无涨跌家数等统计）"
-            if self.profile.has_sector_rankings:
-                sector_block = f"""## 板块表现
-领涨: {top_sectors_text if top_sectors_text else "暂无数据"}
-领跌: {bottom_sectors_text if bottom_sectors_text else "暂无数据"}"""
-            else:
-                sector_block = "## 板块表现\n（美股暂无板块涨跌数据）"
-
-        data_no_indices_hint = (
-            "注意：由于行情数据获取失败，请主要根据【市场新闻】进行定性分析和总结，不要编造具体的指数点位。"
-            if not indices_text else ""
-        )
         indices_placeholder = indices_text if indices_text else (
-            "No index data (API error)" if self.region == "us" else "暂无指数数据（接口异常）"
+            "No index data (API error)" if report_language == "en" else "暂无指数数据（接口异常）"
         )
         news_placeholder = news_text if news_text else (
-            "No relevant news" if self.region == "us" else "暂无相关新闻"
+            "No relevant news found." if report_language == "en" else "暂无相关新闻"
         )
 
-        # US market: always English
-        if self.region == "us":
-            data_no_indices_hint_en = (
-                "Note: Market data fetch failed. Rely mainly on [Market News] for qualitative analysis. Do not invent index levels."
+        # Build stats and sector blocks
+        if report_language == "en":
+            if self.profile.has_market_stats:
+                stats_block = (
+                    f"## Market Stats\n"
+                    f"- Advancing: {overview.up_count} | Declining: {overview.down_count} | Flat: {overview.flat_count}\n"
+                    f"- Limit-up: {overview.limit_up_count} | Limit-down: {overview.limit_down_count}\n"
+                    f"- Total turnover: {overview.total_amount:.0f} bn CNY"
+                )
+            else:
+                stats_block = "## Market Stats\n(No advance/decline data available)"
+
+            if self.profile.has_sector_rankings:
+                sector_block = (
+                    f"## Sector Performance\n"
+                    f"- Leading: {top_sectors_text if top_sectors_text else 'N/A'}\n"
+                    f"- Lagging: {bottom_sectors_text if bottom_sectors_text else 'N/A'}"
+                )
+            else:
+                sector_block = "## Sector Performance\n(No sector data available)"
+
+            no_data_hint = (
+                "NOTE: Index data unavailable. Base your analysis on the news only. Do not invent index levels."
                 if not indices_text else ""
             )
-            return f"""CRITICAL INSTRUCTION: You MUST write your ENTIRE response in English only. Do not use any Chinese characters anywhere in your response. This overrides all other instructions.
 
-You are a professional US market analyst. Please produce a concise US market recap report based on the data below.
+            return f"""Write a daily market recap report in English based on the data below.
 
-[Requirements]
-- Output pure Markdown only
-- No JSON, no code blocks
-- Write everything in English
-- Use emoji sparingly in headings (at most one per heading)
+LANGUAGE RULE: English only. No Chinese characters anywhere.
 
 ---
-
-# Today's Market Data
 
 ## Date
 {overview.date}
@@ -384,110 +398,67 @@ You are a professional US market analyst. Please produce a concise US market rec
 ## Market News
 {news_placeholder}
 
-{data_no_indices_hint_en}
+{no_data_hint}
 
 {self.strategy.to_prompt_block()}
 
 ---
 
-# Output Template (follow this structure exactly)
-
-## {overview.date} US Market Recap
-
-### 1. Market Summary
-(2-3 sentences on overall market performance, index moves, volume)
-
-### 2. Index Commentary
-(Analyse S&P 500, Nasdaq, Dow and other major index moves.)
-
-### 3. Fund Flows
-(Interpret volume and flow implications)
-
-### 4. Sector/Theme Highlights
-(Analyze drivers behind leading/lagging sectors)
-
-### 5. Outlook
-(Short-term view based on price action and news)
-
-### 6. Risk Alerts
-(Key risks to watch)
-
-### 7. Strategy Plan
-(Provide risk-on/neutral/risk-off stance, position sizing guideline, and one invalidation trigger.)
-
----
-
-Output the report content directly in English. No Chinese characters anywhere.
-"""
-
-        # A-share: check report_language
-        report_language = self._get_report_language()
-
-        if report_language == "en":
-            return f"""CRITICAL INSTRUCTION: You MUST write your ENTIRE response in English only. Do not use any Chinese characters anywhere in your response. This overrides all other instructions including any system prompt you received.
-
-You are a professional stock market analyst covering A-shares, H-shares, and US markets. Please produce a concise market recap report based on the data below.
-
-[Requirements]
-- Output pure Markdown only
-- No JSON, no code blocks
-- Write EVERYTHING in English - no Chinese characters at all
-- Use emoji sparingly in headings (at most one per heading)
-
----
-
-# Today's Market Data
-
-## Date
-{overview.date}
-
-## Major Indices
-{indices_placeholder}
-
-{stats_block}
-
-{sector_block}
-
-## Market News
-{news_placeholder}
-
-{data_no_indices_hint}
-
-{self.strategy.to_prompt_block()}
-
----
-
-# Output Template (follow this structure exactly, all in English)
+Use this exact structure:
 
 ## {overview.date} Market Recap
 
 ### 1. Market Summary
-(2-3 sentences on overall market performance, index moves, volume)
+(2-3 sentences: overall performance, index moves, volume)
 
 ### 2. Index Commentary
-({self.profile.prompt_index_hint})
+(Analysis of each major index move and what it means)
 
 ### 3. Fund Flows
-(Interpret volume and flow implications)
+(Volume and money flow interpretation)
 
-### 4. Sector/Theme Highlights
-(Analyze drivers behind leading/lagging sectors)
+### 4. Sector Highlights
+(Leading and lagging sectors — drivers and implications)
 
 ### 5. Outlook
-(Short-term view based on price action and news)
+(Short-term view for next session)
 
 ### 6. Risk Alerts
-(Key risks to watch)
+(Key risks to monitor)
 
 ### 7. Strategy Plan
-(Provide attack/balanced/defensive stance, position sizing guideline, and one invalidation trigger. Add a disclaimer that this is for reference only and not investment advice.)
+(Stance: risk-on / neutral / risk-off. Position sizing. One invalidation trigger. Disclaimer: for reference only, not investment advice.)
 
 ---
 
-Output the report content directly. Write everything in English. No Chinese characters anywhere in the output.
+Write the report now. English only.
 """
 
-        # Chinese prompt (default)
+        # Chinese prompt
+        if self.profile.has_market_stats:
+            stats_block = (
+                f"## 市场概况\n"
+                f"- 上涨: {overview.up_count} 家 | 下跌: {overview.down_count} 家 | 平盘: {overview.flat_count} 家\n"
+                f"- 涨停: {overview.limit_up_count} 家 | 跌停: {overview.limit_down_count} 家\n"
+                f"- 两市成交额: {overview.total_amount:.0f} 亿元"
+            )
+        else:
+            stats_block = "## 市场概况\n（暂无涨跌家数等统计）"
+
+        if self.profile.has_sector_rankings:
+            sector_block = (
+                f"## 板块表现\n"
+                f"领涨: {top_sectors_text if top_sectors_text else '暂无数据'}\n"
+                f"领跌: {bottom_sectors_text if bottom_sectors_text else '暂无数据'}"
+            )
+        else:
+            sector_block = "## 板块表现\n（暂无板块涨跌数据）"
+
+        no_data_hint = (
+            "注意：由于行情数据获取失败，请主要根据【市场新闻】进行定性分析，不要编造具体的指数点位。"
+            if not indices_text else ""
+        )
+
         return f"""你是一位专业的A/H/美股市场分析师，请根据以下数据生成一份简洁的大盘复盘报告。
 
 【重要】输出要求：
@@ -497,8 +468,6 @@ Output the report content directly. Write everything in English. No Chinese char
 - emoji 仅在标题处少量使用（每个标题最多1个）
 
 ---
-
-# 今日市场数据
 
 ## 日期
 {overview.date}
@@ -513,13 +482,11 @@ Output the report content directly. Write everything in English. No Chinese char
 ## 市场新闻
 {news_placeholder}
 
-{data_no_indices_hint}
+{no_data_hint}
 
 {self.strategy.to_prompt_block()}
 
 ---
-
-# 输出格式模板（请严格按此格式输出）
 
 ## {overview.date} 大盘复盘
 
@@ -598,7 +565,7 @@ Output the report content directly. Write everything in English. No Chinese char
 """
         market_label = "A股" if self.region == "cn" else "美股"
         strategy_summary = self.strategy.to_markdown_block()
-        report = f"""## {overview.date} 大盘复盘
+        return f"""## {overview.date} 大盘复盘
 
 ### 一、市场总结
 今日{market_label}市场整体呈现**{market_mood}**态势。
@@ -615,7 +582,6 @@ Output the report content directly. Write everything in English. No Chinese char
 ---
 *复盘时间: {datetime.now().strftime('%H:%M')}*
 """
-        return report
 
     def run_daily_review(self) -> str:
         """执行每日大盘复盘流程"""
@@ -627,27 +593,19 @@ Output the report content directly. Write everything in English. No Chinese char
         return report
 
 
-# 测试入口
 if __name__ == "__main__":
     import sys
     sys.path.insert(0, '.')
-
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
     )
-
     analyzer = MarketAnalyzer()
-
     overview = analyzer.get_market_overview()
     print(f"\n=== 市场概览 ===")
     print(f"日期: {overview.date}")
-    print(f"指数数量: {len(overview.indices)}")
     for idx in overview.indices:
         print(f"  {idx.name}: {idx.current:.2f} ({idx.change_pct:+.2f}%)")
-    print(f"上涨: {overview.up_count} | 下跌: {overview.down_count}")
-    print(f"成交额: {overview.total_amount:.0f}亿")
-
     report = analyzer._generate_template_review(overview, [])
     print(f"\n=== 复盘报告 ===")
     print(report)
