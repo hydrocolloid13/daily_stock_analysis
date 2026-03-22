@@ -908,7 +908,7 @@ class GeminiAnalyzer:
         """
         code = context.get('code', 'Unknown')
         config = get_config()
-        report_language = normalize_report_language(getattr(config, "report_language", "zh"))
+        report_language = normalize_report_language(os.environ.get("REPORT_LANGUAGE") or getattr(config, "report_language", "en"))
         system_prompt = self._get_analysis_system_prompt(report_language, stock_code=code)
         
         # 请求前增加延时（防止连续请求触发限流）
