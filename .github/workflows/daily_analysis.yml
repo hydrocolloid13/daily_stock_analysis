@@ -1,28 +1,24 @@
-name: 每日股票分析
+name: daily_stock_analysis
 on:
-  # 定时触发 - 每天北京时间 18:00 (UTC 10:00)
   schedule:
-    - cron: '0 10 * * 1-5' # 周一到周五，UTC 10:00 = 北京时间 18:00
- 
-  # 手动触发
+    - cron: '0 10 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: '运行模式'
+        description: 'Run mode'
         required: true
         default: 'full'
         type: choice
         options:
-          - full # 完整分析（股票+大盘）
-          - market-only # 仅大盘复盘
-          - stocks-only # 仅股票分析
+          - full
+          - market-only
+          - stocks-only
       force_run:
-        description: '强制运行（跳过交易日检查）'
+        description: 'Force run (skip trading day check)'
         required: false
         default: false
         type: boolean
 
-# 并发控制：同一时间只运行一个分析任务
 concurrency:
   group: stock-analysis
   cancel-in-progress: false
@@ -31,51 +27,46 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-   
+
     steps:
-      - name: 随机延迟（避免固定时间访问）
+      - name: Random delay
         run: sleep $((RANDOM % 60))
 
-      - name: 检出代码
+      - name: Checkout code
         uses: actions/checkout@v5
-     
-      - name: 设置 Python 环境
+
+      - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
-     
-      - name: 安装依赖
+
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-     
-      - name: 创建必要目录
-        run: |
-          mkdir -p data logs reports
 
-      - name: Force English - override .env and GitHub env layer
+      - name: Create directories
+        run: mkdir -p data logs reports
+
+      - name: Force English settings
         run: |
           if [ -f ".env" ]; then
             sed -i 's/^REPORT_LANGUAGE=.*/REPORT_LANGUAGE=en/' .env
             sed -i 's/^REPORT_TYPE=.*/REPORT_TYPE=full/' .env
             grep -q "^REPORT_LANGUAGE=" .env || echo "REPORT_LANGUAGE=en" >> .env
-            grep -q "^REPORT_TYPE=" .env    || echo "REPORT_TYPE=full"    >> .env
+            grep -q "^REPORT_TYPE=" .env || echo "REPORT_TYPE=full" >> .env
             grep -q "^REPORT_RENDERER_ENABLED=" .env || echo "REPORT_RENDERER_ENABLED=true" >> .env
           else
             printf "REPORT_LANGUAGE=en\nREPORT_TYPE=full\nREPORT_RENDERER_ENABLED=true\n" > .env
           fi
-          echo "✅ .env language settings:"
           grep -E "REPORT_LANGUAGE|REPORT_TYPE|REPORT_RENDERER" .env
-          echo "REPORT_LANGUAGE=en"           >> $GITHUB_ENV
-          echo "REPORT_TYPE=full"             >> $GITHUB_ENV
+          echo "REPORT_LANGUAGE=en" >> $GITHUB_ENV
+          echo "REPORT_TYPE=full" >> $GITHUB_ENV
           echo "REPORT_RENDERER_ENABLED=true" >> $GITHUB_ENV
 
-      - name: 执行股票分析
+      - name: Run analysis
         env:
-          # ==========================================
-          # AI 配置
-          # ==========================================
           LITELLM_CONFIG: ${{ vars.LITELLM_CONFIG || secrets.LITELLM_CONFIG }}
           LITELLM_CONFIG_YAML: ${{ vars.LITELLM_CONFIG_YAML || secrets.LITELLM_CONFIG_YAML }}
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
@@ -107,7 +98,7 @@ jobs:
           EMAIL_SENDER: ${{ vars.EMAIL_SENDER || secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS || secrets.EMAIL_RECEIVERS }}
-          EMAIL_SENDER_NAME: ${{ vars.EMAIL_SENDER_NAME || secrets.EMAIL_SENDER_NAME || 'daily_stock_analysis股票分析助手' }}
+          EMAIL_SENDER_NAME: ${{ vars.EMAIL_SENDER_NAME || secrets.EMAIL_SENDER_NAME || 'daily_stock_analysis' }}
           PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
           PUSHOVER_API_TOKEN: ${{ secrets.PUSHOVER_API_TOKEN }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
@@ -127,13 +118,9 @@ jobs:
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
-          # ==========================================
-          # HARDCODED - do not change these to vars/secrets
-          # ==========================================
           REPORT_TYPE: 'full'
           REPORT_LANGUAGE: 'en'
           REPORT_RENDERER_ENABLED: 'true'
-          # ==========================================
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
           MARKET_REVIEW_ENABLED: ${{ vars.MARKET_REVIEW_ENABLED || secrets.MARKET_REVIEW_ENABLED || 'true' }}
           ANALYSIS_DELAY: ${{ vars.ANALYSIS_DELAY || secrets.ANALYSIS_DELAY || '0' }}
@@ -142,63 +129,36 @@ jobs:
           MAX_WORKERS: ${{ vars.MAX_WORKERS || secrets.MAX_WORKERS || '1' }}
           ENABLE_CHIP_DISTRIBUTION: ${{ vars.ENABLE_CHIP_DISTRIBUTION || secrets.ENABLE_CHIP_DISTRIBUTION || 'false' }}
           REALTIME_SOURCE_PRIORITY: ${{ vars.REALTIME_SOURCE_PRIORITY || 'tencent,akshare_sina,efinance,akshare_em' }}
-         
+
         run: |
-          # 处理 LITELLM YAML 配置文件
           if [ -n "$LITELLM_CONFIG_YAML" ] && [ -n "$LITELLM_CONFIG" ]; then
-            echo "📝 使用 GitHub Actions Secrets/Variables 中的 LITELLM_CONFIG_YAML 配置"
             mkdir -p "$(dirname "$LITELLM_CONFIG")"
             echo "$LITELLM_CONFIG_YAML" > "$LITELLM_CONFIG"
-            echo "✅ LITELLM 配置文件已写入: $LITELLM_CONFIG"
           fi
 
           MODE="${{ github.event.inputs.mode || 'full' }}"
-         
-          echo "=========================================="
-          echo "🚀 A股自选股智能分析系统"
-          echo "=========================================="
-          echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
-          echo "🎯 运行模式: $MODE"
-          echo "📊 自选股: $STOCK_LIST"
-          echo "📝 报告类型: $REPORT_TYPE"
-          echo "🌐 报告语言: $REPORT_LANGUAGE"
-          echo ""
-          echo "=========================================="
-          echo "📋 配置检查"
-          echo "=========================================="
-          echo "【AI 配置】"
-          echo " Gemini API Key: $([ -n "$GEMINI_API_KEY" ] && echo '✅ 已配置' || echo '❌ 未配置')"
-          echo ""
-          echo "【通知渠道】"
-          echo " Telegram: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
-          echo "=========================================="
-          echo ""
 
-          # ==========================================
-          # DEBUG: write to temp file to avoid YAML quote issues
-          # ==========================================
-          cat > /tmp/debug_config.py << 'PYEOF'
-import os
-print("=== OS ENV CHECK ===")
-print("REPORT_LANGUAGE:", os.environ.get("REPORT_LANGUAGE", "NOT SET"))
-print("REPORT_TYPE:", os.environ.get("REPORT_TYPE", "NOT SET"))
-from src.config import setup_env, get_config
-setup_env()
-c = get_config()
-print("=== CONFIG OBJECT CHECK ===")
-print("config.report_language:", c.report_language)
-print("config.report_type:", c.report_type)
-print("config.market_review_enabled:", c.market_review_enabled)
-print("==========================================")
-PYEOF
-          python /tmp/debug_config.py
-          # ==========================================
+          echo "=== SHELL ENV CHECK ==="
+          echo "REPORT_LANGUAGE=$REPORT_LANGUAGE"
+          echo "REPORT_TYPE=$REPORT_TYPE"
+          echo "======================"
+
+          printf 'import os\n' > /tmp/dbg.py
+          printf 'print("=== OS ENV CHECK ===")\n' >> /tmp/dbg.py
+          printf 'print("REPORT_LANGUAGE:", os.environ.get("REPORT_LANGUAGE", "NOT SET"))\n' >> /tmp/dbg.py
+          printf 'from src.config import setup_env, get_config\n' >> /tmp/dbg.py
+          printf 'setup_env()\n' >> /tmp/dbg.py
+          printf 'c = get_config()\n' >> /tmp/dbg.py
+          printf 'print("=== CONFIG OBJECT CHECK ===")\n' >> /tmp/dbg.py
+          printf 'print("config.report_language:", c.report_language)\n' >> /tmp/dbg.py
+          printf 'print("config.report_type:", c.report_type)\n' >> /tmp/dbg.py
+          python /tmp/dbg.py
 
           FORCE_RUN_ARG=""
           if [ "${{ github.event.inputs.force_run }}" = "true" ]; then
             FORCE_RUN_ARG="--force-run"
           fi
-         
+
           if [ "$MODE" = "market-only" ]; then
             python main.py --market-review $FORCE_RUN_ARG
           elif [ "$MODE" = "stocks-only" ]; then
@@ -206,8 +166,8 @@ PYEOF
           else
             python main.py $FORCE_RUN_ARG
           fi
-     
-      - name: 上传分析报告
+
+      - name: Upload reports
         uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -216,22 +176,13 @@ PYEOF
             reports/
             logs/
           retention-days: 30
-     
-      - name: 显示运行결과
+
+      - name: Show results
         if: always()
         run: |
-          echo ""
-          echo "=========================================="
-          echo "📊 分析完成"
-          echo "=========================================="
           if [ -d "reports" ] && [ "$(ls -A reports 2>/dev/null)" ]; then
-            echo "生成的报告:"
             ls -la reports/
           else
-            echo "⚠️ 未生成报告文件"
+            echo "No reports generated"
           fi
-          echo ""
-          if [ -f "logs/stock_analysis_$(date +%Y%m%d).log" ]; then
-            echo "📜 最近日志（最后 30 行）:"
-            tail -30 logs/stock_analysis_*.log 2>/dev/null || echo "无日志"
-          fi
+          tail -30 logs/stock_analysis_*.log 2>/dev/null || echo "No logs"
