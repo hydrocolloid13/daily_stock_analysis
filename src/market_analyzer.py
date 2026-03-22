@@ -532,6 +532,73 @@ Output the report content directly, no extra commentary.
 """
 
         # A 股场景使用中文提示语
+        # Check report_language to decide prompt language
+        from src.report_language import normalize_report_language
+        report_language = normalize_report_language(getattr(self.config, 'report_language', 'zh'))
+
+        if report_language == "en":
+            return f"""You are a professional A-share/H-share/US market analyst. Please produce a concise market recap report based on the data below.
+
+[Requirements]
+- Output pure Markdown only
+- No JSON
+- No code blocks
+- Use emoji sparingly in headings (at most one per heading)
+
+---
+
+# Today's Market Data
+
+## Date
+{overview.date}
+
+## Major Indices
+{indices_placeholder}
+
+{stats_block}
+
+{sector_block}
+
+## Market News
+{news_placeholder}
+
+{data_no_indices_hint}
+
+{self.strategy.to_prompt_block()}
+
+---
+
+# Output Template (follow this structure)
+
+## {overview.date} Market Recap
+
+### 1. Market Summary
+(2-3 sentences on overall market performance, index moves, volume)
+
+### 2. Index Commentary
+({self.profile.prompt_index_hint})
+
+### 3. Fund Flows
+(Interpret volume and flow implications)
+
+### 4. Sector/Theme Highlights
+(Analyze drivers behind leading/lagging sectors)
+
+### 5. Outlook
+(Short-term view based on price action and news)
+
+### 6. Risk Alerts
+(Key risks to watch)
+
+### 7. Strategy Plan
+(Provide attack/balanced/defensive stance, position sizing guideline, and one invalidation trigger.)
+
+---
+
+Output the report content directly, no extra commentary.
+"""
+
+        # A 股场景使用中文提示语
         return f"""你是一位专业的A/H/美股市场分析师，请根据以下数据生成一份简洁的大盘复盘报告。
 
 【重要】输出要求：
@@ -586,11 +653,12 @@ Output the report content directly, no extra commentary.
 （需要关注的风险点）
 
 ### 七、策略计划
-（给出进攻/均衡/防守结论，对应仓位建议，并给出一个触发失效条件；最后补充“建议仅供参考，不构成投资建议”。）
+（给出进攻/均衡/防守结论，对应仓位建议，并给出一个触发失效条件；最后补充"建议仅供参考，不构成投资建议"。）
 
 ---
 
 请直接输出复盘报告内容，不要输出其他说明文字。
+"""
 """
     
     def _generate_template_review(self, overview: MarketOverview, news: List) -> str:
