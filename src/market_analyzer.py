@@ -220,6 +220,7 @@ class MarketAnalyzer:
         return "\n".join(lines)
 
     def _build_review_prompt(self, overview: MarketOverview, news: List) -> str:
+        """Build review prompt with VERY STRONG English forcing (always English now)."""
         indices_text = ""
         for idx in overview.indices:
             direction = "↑" if idx.change_pct > 0 else "↓" if idx.change_pct < 0 else "-"
