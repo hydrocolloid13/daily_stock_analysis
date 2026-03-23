@@ -209,6 +209,8 @@ jobs:
           export REPORT_LANGUAGE=en
           echo "REPORT_LANGUAGE=en" >> .env
           echo "✅ English forced via export + .env"
+          echo "DEBUG + REPORT_LANGUAGE      = [$REPORT_LANGUAGE]"
+          echo "DEBUG + MARKET_REVIEW_REGION = [$MARKET_REVIEW_REGION]"
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
