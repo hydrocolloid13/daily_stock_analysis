@@ -204,7 +204,13 @@ jobs:
           echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
           echo "🎯 运行模式: $MODE"
           echo "📊 自选股: $STOCK_LIST"
-          echo "📝 报告类型: $REPORT_TYPE"
+          echo "📋 报告类型: $REPORT_TYPE"
+          echo "=== Forcing English Report ==="
+          export REPORT_LANGUAGE=en
+          echo "REPORT_LANGUAGE=en" >> .env
+          echo "✅ English forced via export + .env"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
           echo "=========================================="
           echo "📋 配置检查"
