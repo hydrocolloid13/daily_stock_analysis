@@ -662,31 +662,38 @@ class GeminiAnalyzer:
         if not self._litellm_available:
             logger.warning("No LLM configured (LITELLM_MODEL / API keys), AI analysis will be unavailable")
 
-    def _get_analysis_system_prompt(self, report_language: str, stock_code: str = "") -> str:
-        """Build the analyzer system prompt with output-language guidance."""
+        def _get_analysis_system_prompt(self, report_language: str, stock_code: str = "") -> str:
+        """Build the analyzer system prompt with VERY STRONG English forcing."""
         lang = normalize_report_language(report_language)
         market_role = get_market_role(stock_code, lang)
         market_guidelines = get_market_guidelines(stock_code, lang)
+        
         base_prompt = self.SYSTEM_PROMPT.replace(
             "{market_placeholder}", market_role
         ).replace(
             "{guidelines_placeholder}", market_guidelines
         )
+
         if lang == "en":
-            return base_prompt + """
-
-## Output Language (highest priority)
-
-- Keep all JSON keys unchanged.
-- `decision_type` must remain `buy|hold|sell`.
-- All human-readable JSON values must be written in English.
-- Use the common English company name when you are confident; otherwise keep the original listed company name instead of inventing one.
-- This includes `stock_name`, `trend_prediction`, `operation_advice`, `confidence_level`, nested dashboard text, checklist items, and all narrative summaries.
+            # === VERY STRONG ENGLISH OVERRIDE (this fixes the Chinese reports) ===
+            strong_directive = """**CRITICAL LANGUAGE DIRECTIVE - HIGHEST PRIORITY (READ FIRST)**
+You are a professional English-language investment analyst writing for English-speaking investors.
+**YOU MUST RESPOND EXCLUSIVELY IN PROFESSIONAL ENGLISH ONLY.**
+- NEVER use any Chinese characters anywhere in your response.
+- All text, JSON values, headings, advice, summaries, risk_alerts, checklists, and explanations must be in clear, natural English.
+- Translate all concepts, company names, and terms into standard financial English.
+This instruction has the absolute highest priority and overrides everything else in the prompt.
 """
+            return strong_directive + base_prompt + """
+## Output Language (strict enforcement)
+- Keep all JSON keys exactly as defined.
+- `decision_type` must remain `buy|hold|sell`.
+- All human-readable JSON values must be written in English only.
+"""
+        
+        # Chinese version (unchanged)
         return base_prompt + """
-
 ## 输出语言（最高优先级）
-
 - 所有 JSON 键名保持不变。
 - `decision_type` 必须保持为 `buy|hold|sell`。
 - 所有面向用户的人类可读文本值必须使用中文。
