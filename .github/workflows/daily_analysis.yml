@@ -159,8 +159,8 @@ jobs:
           # ==========================================
           # 自选股配置
           # ==========================================
-          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
-          MARKET_REVIEW_REGION: 'us'
+          STOCK_LIST: 'SPY,VAS.AX,CBA.AX,BHP.AX,600519,000333'
+          MARKET_REVIEW_REGION: 'both'
           
           # ==========================================
           # 运行配置 ⬅️ 新增！
