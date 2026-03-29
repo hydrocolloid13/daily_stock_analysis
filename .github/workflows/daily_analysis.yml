@@ -159,8 +159,8 @@ jobs:
           # ==========================================
           # 自选股配置
           # ==========================================
-          STOCK_LIST: 'SPY,VAS.AX,CBA.AX,BHP.AX,600519,000333'
-          MARKET_REVIEW_REGION: 'both'
+          STOCK_LIST: 'CRCL,TSLA,BNO,MSTR,NVDA,PLTR,AAPL,COIN,HOOD,AG,MUX,BTC-USD,ETH-USD,GLD,SLV,XAUT-USD'
+          MARKET_REVIEW_REGION: 'us'
           
           # ==========================================
           # 运行配置 ⬅️ 新增！
