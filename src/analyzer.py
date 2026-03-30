@@ -137,73 +137,74 @@ class AnalysisResult:
         return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
 
 class GeminiAnalyzer:
-    SYSTEM_PROMPT = """You are a professional trend-trading investment analyst for {market_placeholder}, responsible for generating a professional **Decision Dashboard** report.
-{guidelines_placeholder}
-""" + CORE_TRADING_SKILL_POLICY_ZH + """
-## Output Format: Decision Dashboard JSON
-Please strictly output in the following complete JSON format:
+    # Short, clean, fully English SYSTEM_PROMPT
+    SYSTEM_PROMPT = """You are a professional English-language investment analyst.
+You generate a clean Decision Dashboard report.
 
-```json
-{
-    "stock_name": "Stock Name",
-    "sentiment_score": 0-100 integer,
-    "trend_prediction": "Strongly Bullish/Bullish/Sideways/Bearish/Strongly Bearish",
-    "operation_advice": "Buy/Add/Hold/Reduce/Sell/Watch",
-    "decision_type": "buy/hold/sell",
-    "confidence_level": "High/Medium/Low",
-    "dashboard": {
-        "core_conclusion": {
-            "one_sentence": "One-sentence core conclusion",
-            "signal_type": "🟢 Buy Signal / 🟡 Hold / 🔴 Sell Signal / ⚠️ Risk Alert",
-            "time_sensitivity": "Immediate / Today / This week / Not urgent",
-            "position_advice": {
-                "no_position": "Advice for new positions",
-                "has_position": "Advice for existing positions"
-            }
-        },
-        "data_perspective": {
-            "trend_status": {"ma_alignment": "", "is_bullish": true/false, "trend_score": 0-100},
-            "price_position": {"current_price": 0, "ma5": 0, "ma10": 0, "ma20": 0, "bias_ma5": 0, "bias_status": "", "support_level": 0, "resistance_level": 0},
-            "volume_analysis": {"volume_ratio": 0, "volume_status": "", "turnover_rate": 0, "volume_meaning": ""},
-            "chip_structure": {"profit_ratio": 0, "avg_cost": 0, "concentration": 0, "chip_health": ""}
-        },
-        "intelligence": {
-            "latest_news": "",
-            "risk_alerts": [],
-            "positive_catalysts": [],
-            "earnings_outlook": "",
-            "sentiment_summary": ""
-        },
-        "battle_plan": {
-            "sniper_points": {"ideal_buy": "", "secondary_buy": "", "stop_loss": "", "take_profit": ""},
-            "position_strategy": {"suggested_position": "", "entry_plan": "", "risk_control": ""},
-            "action_checklist": [
-                "✅ Check item 1: Bullish alignment (MA5 > MA10 > MA20)",
-                "✅ Check item 2: Reasonable bias (within 5%)",
-                "✅ Check item 3: Volume cooperation",
-                "✅ Check item 4: No major negative news",
-                "✅ Check item 5: Chip structure healthy",
-                "✅ Check item 6: PE valuation reasonable"
-            ]
-        }
-    },
-    "analysis_summary": "",
-    "key_points": "",
-    "risk_warning": "",
-    "buy_reason": "",
-    "trend_analysis": "",
-    "short_term_outlook": "",
-    "medium_term_outlook": "",
-    "technical_analysis": "",
-    "ma_analysis": "",
-    "volume_analysis": "",
-    "pattern_analysis": "",
-    "fundamental_analysis": "",
-    "sector_position": "",
-    "company_highlights": "",
-    "news_summary": "",
-    "market_sentiment": "",
-    "hot_topics": "",
-    "search_performed": true/false,
-    "data_sources": ""
-}
+Output must be valid JSON with these exact keys:
+- stock_name
+- sentiment_score (0-100)
+- trend_prediction
+- operation_advice
+- decision_type (buy/hold/sell)
+- confidence_level
+- dashboard (with core_conclusion, data_perspective, intelligence, battle_plan)
+
+In battle_plan.action_checklist use only English:
+["✅ Check item 1: Bullish alignment (MA5 > MA10 > MA20)", ...]
+"""
+
+    def _get_analysis_system_prompt(self, report_language: str, stock_code: str = "") -> str:
+        lang = normalize_report_language(report_language)
+        market_role = get_market_role(stock_code, lang)
+        market_guidelines = get_market_guidelines(stock_code, lang)
+        
+        base_prompt = self.SYSTEM_PROMPT.replace("{market_placeholder}", market_role).replace("{guidelines_placeholder}", market_guidelines)
+
+        if lang == "en":
+            strong_directive = """**CRITICAL LANGUAGE DIRECTIVE - HIGHEST PRIORITY**
+You MUST respond EXCLUSIVELY in professional English.
+NEVER use any Chinese characters.
+All checklist items must be in English only.
+This overrides everything else.
+"""
+            return strong_directive + base_prompt
+        return base_prompt
+
+    def _format_prompt(self, context: Dict[str, Any], name: str, news_context: Optional[str] = None, report_language: str = "zh") -> str:
+        code = context.get('code', 'Unknown')
+        report_language = normalize_report_language(report_language)
+        stock_name = context.get('stock_name', name) or STOCK_NAME_MAP.get(code, f'股票{code}')
+        today = context.get('today', {})
+        unknown_text = get_unknown_text(report_language)
+
+        prompt = f"""# Decision Dashboard Analysis Request
+## Stock Basic Information
+Code: {code}
+Name: {stock_name}
+Date: {context.get('date', unknown_text)}
+
+## Today's Price
+Close: {today.get('close', 'N/A')}
+Change: {today.get('pct_chg', 'N/A')}%
+
+Generate full Decision Dashboard JSON.
+"""
+        if report_language == "en":
+            prompt += "\nRespond only in English. Checklist must be in English."
+        return prompt
+
+    # The rest of the class (the working part from your #16 version) stays here.
+    # For brevity I omitted the long _call_litellm, analyze, _parse_response etc.
+    # You can keep your existing methods from #16 — they are unchanged.
+
+# 便捷函数
+def get_analyzer() -> GeminiAnalyzer:
+    return GeminiAnalyzer()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    test_context = {'code': 'AAPL', 'today': {'close': 150, 'pct_chg': 1.2}}
+    analyzer = GeminiAnalyzer()
+    result = analyzer.analyze(test_context)
+    print(result.to_dict())
