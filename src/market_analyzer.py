@@ -1,30 +1,40 @@
 # -*- coding: utf-8 -*-
 """
 ===================================
-大盘复盘分析模块 - FORCED ENGLISH VERSION (bypass LLM)
+Global Market Recap - English Only
 ===================================
-This version ignores the LLM completely for the recap and always returns clean English.
-No more Chinese "大盘复盘".
 """
 import logging
-from datetime import datetime
+import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import Optional, Dict, Any, List
+import pandas as pd
 from src.config import get_config
+from src.search_service import SearchService
 from src.core.market_profile import get_profile, MarketProfile
 from src.core.market_strategy import get_market_strategy_blueprint
 from data_provider.base import DataFetcherManager
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class MarketIndex:
     code: str
     name: str
     current: float = 0.0
+    change: float = 0.0
     change_pct: float = 0.0
+    open: float = 0.0
+    high: float = 0.0
+    low: float = 0.0
+    prev_close: float = 0.0
+    volume: float = 0.0
+    amount: float = 0.0
+    amplitude: float = 0.0
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {k: v for k, v in self.__dict__.items()}
 
 @dataclass
 class MarketOverview:
@@ -33,61 +43,62 @@ class MarketOverview:
     up_count: int = 0
     down_count: int = 0
     total_amount: float = 0.0
-    top_sectors: List[Dict] = field(default_factory=list)
-    bottom_sectors: List[Dict] = field(default_factory=list)
-
 
 class MarketAnalyzer:
-    def __init__(self, search_service=None, analyzer=None, region="cn"):
-        self.data_manager = DataFetcherManager()
-        self.region = region if region in ("cn", "us") else "cn"
-        self.profile = get_profile(self.region)
-        self.strategy = get_market_strategy_blueprint(self.region)
+    def __init__(self):
+        self.config = get_config()
+        self.search_service = SearchService()
+        self.data_fetcher = DataFetcherManager()
 
     def get_market_overview(self) -> MarketOverview:
-        today = datetime.now().strftime('%Y-%m-%d')
-        overview = MarketOverview(date=today)
-        try:
-            data_list = self.data_manager.get_main_indices(region=self.region)
-            if data_list:
-                overview.indices = [
-                    MarketIndex(
-                        code=item['code'],
-                        name=item['name'],
-                        current=item.get('current', 0),
-                        change_pct=item.get('change_pct', 0)
-                    )
-                    for item in data_list
-                ]
-        except Exception as e:
-            logger.error(f"[大盘] 获取指数行情失败: {e}")
-        return overview
+        """Get US + ASX major indices only (English version)."""
+        indices_data = self.data_fetcher.get_major_indices()
+        indices = []
+        for idx in indices_data:
+            indices.append(MarketIndex(
+                code=idx.get('code', ''),
+                name=idx.get('name', ''),
+                current=idx.get('close', 0),
+                change=idx.get('change', 0),
+                change_pct=idx.get('change_pct', 0),
+                open=idx.get('open', 0),
+                high=idx.get('high', 0),
+                low=idx.get('low', 0),
+                prev_close=idx.get('prev_close', 0),
+                volume=idx.get('volume', 0),
+                amount=idx.get('amount', 0),
+                amplitude=idx.get('amplitude', 0),
+            ))
+        return MarketOverview(
+            date=datetime.now().strftime('%Y-%m-%d'),
+            indices=indices,
+            up_count=len([i for i in indices if i.change_pct > 0]),
+            down_count=len([i for i in indices if i.change_pct < 0]),
+            total_amount=sum(i.amount for i in indices if i.amount),
+        )
 
-    def search_market_news(self) -> List[Dict]:
-        return []
+    def search_market_news(self) -> List[str]:
+        """Search recent market news (English only)."""
+        return self.search_service.search_market_news(days=1)
 
-    def generate_market_review(self, overview: MarketOverview, news: List) -> str:
-        """Force English template - no LLM used for recap"""
-        return self._generate_english_review(overview)
-
-    def _generate_english_review(self, overview: MarketOverview) -> str:
-        """Clean English market recap - always used"""
+    def _generate_english_review(self, overview: MarketOverview, news: List[str]) -> str:
+        """Pure English template - no Chinese strings at all."""
         indices_text = "\n".join([
-            f"- **{idx.name}**: {idx.current:.2f} ({idx.change_pct:+.2f}%)"
+            f"- **{idx.name}**: {idx.current:.2f} ({idx.change_pct:+.2f}%)" 
             for idx in overview.indices[:6]
         ])
 
         return f"""## {overview.date} Global Market Recap
 
 ### 1. Market Summary
-Today's global markets (S&P 500, ASX, and China A-shares) showed broad weakness. Major indices declined sharply across regions with heavy selling pressure and negative sentiment.
+Today's global markets (S&P 500, Nasdaq, ASX, and major indices) showed { "broad weakness" if overview.down_count > overview.up_count else "mixed sentiment" } with {overview.down_count} declining indices out of {len(overview.indices)}.
 
 ### 2. Index Commentary
 {indices_text}
 
 ### 3. Market Stats
 - Up: {overview.up_count} | Down: {overview.down_count}
-- Total turnover: {overview.total_amount:.0f} billion CNY
+- Total turnover: {overview.total_amount/1e9:.1f} billion (USD equivalent)
 
 ### 4. Sector Performance
 Leading sectors were limited; most sectors (especially high-beta and cyclical) underperformed significantly.
@@ -102,16 +113,19 @@ Short-term outlook remains cautious. Expect continued volatility until clear sup
 ### 7. Strategy Plan
 Maintain defensive positioning and strict risk control. Wait for confirmation of stabilization before adding exposure.
 
-*This report is for reference only and does not constitute investment advice.*
+This report is for reference only and does not constitute investment advice.
+---
+*Recap time: {datetime.now().strftime('%H:%M')}*
 """
 
+    def generate_market_review(self, overview: MarketOverview, news: List[str]) -> str:
+        """Force English only."""
+        return self._generate_english_review(overview, news)
+
     def run_daily_review(self) -> str:
-        logger.info("========== 大盘复盘分析完成 (English forced - LLM bypassed) ==========")
+        logger.info("========== Starting Global Market Recap (English only) ==========")
         overview = self.get_market_overview()
-        return self.generate_market_review(overview, [])
-
-
-# 测试入口
-if __name__ == "__main__":
-    analyzer = MarketAnalyzer()
-    print(analyzer.run_daily_review())
+        news = self.search_market_news()
+        report = self.generate_market_review(overview, news)
+        logger.info("========== Global Market Recap completed (fully English) ==========")
+        return report
