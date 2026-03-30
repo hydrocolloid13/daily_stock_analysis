@@ -100,7 +100,7 @@ jobs:
           # ==========================================
           # 自选股配置（你的最新列表）
           # ==========================================
-          STOCK_LIST: 'AAPL,TSLA,BTC-USD,GLD'
+          STOCK_LIST: 'CRCL,TSLA,BNO,MSTR,NVDA,PLTR,AAPL,COIN,HOOD,AG,MUX,BTC-USD,GLD,SLV,XAUT-USD'
           MARKET_REVIEW_REGION: 'us'
 
           # ==========================================
