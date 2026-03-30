@@ -137,7 +137,7 @@ class AnalysisResult:
         return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
 
 class GeminiAnalyzer:
-    # Short, clean, fully English SYSTEM_PROMPT
+    # Short, clean, fully English SYSTEM_PROMPT to avoid syntax errors
     SYSTEM_PROMPT = """You are a professional English-language investment analyst.
 You generate a clean Decision Dashboard report.
 
@@ -151,7 +151,7 @@ Output must be valid JSON with these exact keys:
 - dashboard (with core_conclusion, data_perspective, intelligence, battle_plan)
 
 In battle_plan.action_checklist use only English:
-["✅ Check item 1: Bullish alignment (MA5 > MA10 > MA20)", ...]
+["✅ Check item 1: Bullish alignment (MA5 > MA10 > MA20)", "✅ Check item 2: Reasonable bias (within 5%)", "✅ Check item 3: Volume cooperation", "✅ Check item 4: No major negative news", "✅ Check item 5: Chip structure healthy", "✅ Check item 6: PE valuation reasonable"]
 """
 
     def _get_analysis_system_prompt(self, report_language: str, stock_code: str = "") -> str:
@@ -179,24 +179,33 @@ This overrides everything else.
         unknown_text = get_unknown_text(report_language)
 
         prompt = f"""# Decision Dashboard Analysis Request
-## Stock Basic Information
-Code: {code}
-Name: {stock_name}
-Date: {context.get('date', unknown_text)}
-
-## Today's Price
-Close: {today.get('close', 'N/A')}
-Change: {today.get('pct_chg', 'N/A')}%
-
-Generate full Decision Dashboard JSON.
+## 📊 Stock Basic Information
+| Item | Data |
+|------|------|
+| Code | **{code}** |
+| Name | **{stock_name}** |
+| Date | {context.get('date', unknown_text)} |
+---
+## 📈 Technical Data
+### Today's Price
+| Metric | Value |
+|--------|-------|
+| Close | {today.get('close', 'N/A')} |
+| Open | {today.get('open', 'N/A')} |
+| High | {today.get('high', 'N/A')} |
+| Low | {today.get('low', 'N/A')} |
+| Change | {today.get('pct_chg', 'N/A')}% |
 """
         if report_language == "en":
-            prompt += "\nRespond only in English. Checklist must be in English."
+            prompt += """
+### Output language requirements (highest priority)
+- Respond exclusively in professional English.
+- Never use Chinese characters.
+"""
         return prompt
 
-    # The rest of the class (the working part from your #16 version) stays here.
-    # For brevity I omitted the long _call_litellm, analyze, _parse_response etc.
-    # You can keep your existing methods from #16 — they are unchanged.
+    # (Keep all the rest of your original GeminiAnalyzer methods from #16 here:
+    # _call_litellm, analyze, _parse_response, _fix_json_string, _parse_text_response, batch_analyze, etc.)
 
 # 便捷函数
 def get_analyzer() -> GeminiAnalyzer:
